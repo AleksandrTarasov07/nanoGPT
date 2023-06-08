@@ -34,10 +34,10 @@ if DESCRIPTION_ONLY:
     train_data = descriptions_text[:int(n * 0.9)]
     val_data = descriptions_text[int(n * 0.9):]
 
+    print(f'len train_data = {len(train_data)}\nlen val_data = {len(val_data)}')
 
     # encode with tiktoken gpt2 bpe
     tokenizer = tiktoken.get_encoding("gpt2")
-    print(train_data[:1000])
     train_ids = tokenizer.encode_ordinary(train_data)
     val_ids = tokenizer.encode_ordinary(val_data)
     print(f"train has {len(train_ids):,} tokens")
@@ -46,7 +46,7 @@ if DESCRIPTION_ONLY:
     # export to bin files
     train_ids = np.array(train_ids, dtype=np.uint16)
     val_ids = np.array(val_ids, dtype=np.uint16)
-    train_ids.tofile(os.path.join(os.path.dirname(__file__), 'train.txt'))
+    train_ids.tofile(os.path.join(os.path.dirname(__file__), 'train.bin'))
     val_ids.tofile(os.path.join(os.path.dirname(__file__), 'val.bin'))
 
 
