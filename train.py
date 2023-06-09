@@ -222,7 +222,7 @@ def estimate_loss_and_metrics():
             with ctx:
                 logits, loss = model(X, Y)
             losses[k] = loss.item()
-            perps[k] = perplexity.update(loss, Y).compute().item()
+            perps[k] = torch.exp(loss).item()
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
     model.train()
