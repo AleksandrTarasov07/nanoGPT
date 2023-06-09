@@ -26,7 +26,9 @@ import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
-from torcheval.metrics.text import Perplexity
+from torchmetrics.functional import bleu_score
+import tiktoken
+
 
 from model import GPTConfig, GPT
 
@@ -78,6 +80,9 @@ config_keys = [k for k,v in globals().items() if not k.startswith('_') and isins
 exec(open('/content/nanoGPT/configurator.py').read()) # overrides from command line or config file
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
+
+# tokenizer
+tokenizer = tiktoken.get_encoding("gpt2")
 
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
@@ -210,23 +215,28 @@ if ddp:
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss_and_metrics():
-    perplexity = Perplexity()
+
     out_loss = {}
     out_perp = {}
+    out_bleu = {}
     model.eval()
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
         perps = torch.zeros(eval_iters)
+        bleu = torch.zeros(eval_iters)
         for k in range(eval_iters):
             X, Y = get_batch(split)
+            X_sen, Y_sen = tokenizer.decode(X), tokenizer.decode(Y)
             with ctx:
                 logits, loss = model(X, Y)
             losses[k] = loss.item()
             perps[k] = torch.exp(loss).item()
+            bleu[k] = bleu_score(X_sen, Y_sen)
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
+        out_bleu[split] = bleu.mean()
     model.train()
-    return out_loss, out_perp
+    return out_loss, out_perp, out_bleu
 
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
@@ -262,9 +272,10 @@ while True:
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
-        losses, perps = estimate_loss_and_metrics()
+        losses, perps, bleus = estimate_loss_and_metrics()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f} \
-              train perplexity {perps['train']:.4f}, val perplexity {perps['val']:.4f}")
+              \ntrain perplexity {perps['train']:.4f}, val perplexity {perps['val']:.4f}, \
+        train bleu {bleus['train']:.4f}, val bleu {bleus['val']:.4f}")
 
         if wandb_log:
             wandb.log({
@@ -273,6 +284,8 @@ while True:
                 "val/loss": losses['val'],
                 "train/perplexity": perps['train'],
                 "val/perplexity": perps['val'],
+                "train/bleu": bleus['train'],
+                "val/bleu": bleus['val'],
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
