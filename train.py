@@ -332,8 +332,13 @@ while True:
                 "val/perplexity": perps['val'],
                 "train/bleu": bleus['train'],
                 "val/bleu": bleus['val'],
-                "train/rouge1": rouges1['train'],
-                "val/rouge1": rouges1['val'],
+                "train/rouge1_fmesure": rouges1['train'],
+                "val/rouge1_fmesure": rouges1['val'],
+                "train/rouge2_fmesure": rouges2['train'],
+                "val/rouge2_fmesure": rouges2['val'],
+                "train/rougeL_fmesure": rougesL['train'],
+                "val/rougeL_fmesure": rougesL['val'],
+                "va"
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
@@ -375,7 +380,7 @@ while True:
             logits, loss = model(X, Y)
             loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
-        X, Y = get_batch('train')
+        X, Y, Y_seq = get_batch('train')
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
     # clip the gradient
