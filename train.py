@@ -221,13 +221,16 @@ if ddp:
 def estimate_loss_and_metrics():
     bleu_score = BLEUScore(n_gram=3)
     rouge_score = ROUGEScore()
-    bert_score = BERTScore(max_length=block_size)
+    # bert_score = BERTScore(max_length=block_size)
     out_loss = {}
     out_perp = {}
     out_bleu = {}
-    out_bert_f1 = {}
-    out_bert_recall = {}
-    out_bert_precision = {}
+    out_rouge1 = {}
+    out_rouge2 = {}
+    out_rougeL = {}
+    # out_bert_f1 = {}
+    # out_bert_recall = {}
+    # out_bert_precision = {}
     # out_rouge = {}
     model.eval()
     for split in ['train', 'val']:
@@ -235,9 +238,13 @@ def estimate_loss_and_metrics():
         losses = torch.zeros(eval_iters)
         perps = torch.zeros(eval_iters)
         bleu = torch.zeros(eval_iters)
-        bert_f1 = torch.zeros(eval_iters)
-        bert_precision = torch.zeros(eval_iters)
-        bert_recall = torch.zeros(eval_iters)
+        rouge1 = torch.zeros(eval_iters)
+        rouge2 = torch.zeros(eval_iters)
+        rougeL = torch.zeros(eval_iters)
+
+        # bert_f1 = torch.zeros(eval_iters)
+        # bert_precision = torch.zeros(eval_iters)
+        # bert_recall = torch.zeros(eval_iters)
         # rouges = torch.zeros(eval_iters)
 
         for k in range(eval_iters):
@@ -251,21 +258,32 @@ def estimate_loss_and_metrics():
 
             losses[k] = loss.item()
             perps[k] = torch.exp(loss).item()
-            # rouges[k] = rouge_score(X_seq, Y_seq)
             bleu[k] = bleu_score(X_seq, Y_seq)
-            bert_curr = bert_score(X_seq, Y_seq)
-            bert_f1[k] = bert_curr['f1']
-            bert_recall[k] = bert_curr['recall']
-            bert_precision[k] = bert_curr['precision']
+
+            rouge_curr = rouge_score(X_seq, Y_seq)
+            rouge1[k] = rouge_curr['rouge1_fmeasure']
+            rouge2[k] = rouge_curr['rouge2_fmeasure']
+            rougeL[k] = rouge_curr['rougeL_fmeasure']
+            # bert_curr = bert_score(X_seq, Y_seq)
+            # bert_f1[k] = bert_curr['f1']
+            # bert_recall[k] = bert_curr['recall']
+            # bert_precision[k] = bert_curr['precision']
+
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
         out_bleu[split] = bleu.mean()
-        out_bert_f1[split] = bert_f1.mean()
-        out_bert_precision[split] = bert_precision.mean()
-        out_bert_recall[split] = bert_recall.mean()
+
+        out_rouge1[split] = rouge1.mean()
+        out_rouge2[split] = rouge2.mean()
+        out_rougeL[split] = rougeL.mean()
+
+
+        # out_bert_f1[split] = bert_f1.mean()
+        # out_bert_precision[split] = bert_precision.mean()
+        # out_bert_recall[split] = bert_recall.mean()
 
     model.train()
-    return out_loss, out_perp, out_bleu, out_bert_f1, out_bert_precision, out_bert_recall
+    return out_loss, out_perp, out_bleu, out_rouge1, out_rouge2, out_rougeL
 
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
@@ -301,7 +319,7 @@ while True:
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
-        losses, perps, bleus, bert_f1, bert_precision, bert_recall = estimate_loss_and_metrics()
+        losses, perps, bleus, rouges1, rouges2, rougesL = estimate_loss_and_metrics()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f} \
               \ntrain perplexity {perps['train']:.4f}, val perplexity {perps['val']:.4f}")
 
@@ -314,15 +332,20 @@ while True:
                 "val/perplexity": perps['val'],
                 "train/bleu": bleus['train'],
                 "val/bleu": bleus['val'],
-                "train/bert_f1": bert_f1['train'],
+                "train/rouge1": rouges1['train'],
+                "val/rouge1": rouges1['val'],
+                "lr": lr,
+                "mfu": running_mfu*100, # convert to percentage
+            })
+            '''
+            TODO: 
+            "train/bert_f1": bert_f1['train'],
                 "train/bert_precision": bert_precision['train'],
                 "train/bert_recall": bert_recall['train'],
                 "val/bert_f1": bert_f1['val'],
                 "val/bert_precision": bert_precision['val'],
                 "val/bert_recall": bert_recall['val'],
-                "lr": lr,
-                "mfu": running_mfu*100, # convert to percentage
-            })
+            '''
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
             if iter_num > 0:
