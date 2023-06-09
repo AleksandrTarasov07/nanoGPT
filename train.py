@@ -124,6 +124,8 @@ def get_batch(split):
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    x_seq = torch.Tensor(tokenizer.decode(x)).to(device)
+    y_seq = torch.tensor(tokenizer.decode(y)).to(device)
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
@@ -225,8 +227,7 @@ def estimate_loss_and_metrics():
         perps = torch.zeros(eval_iters)
         bleu = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            X, Y = get_batch(split)
-            X_sen, Y_sen = tokenizer.decode(X), tokenizer.decode(Y)
+            X, Y,X_sen, Y_sen = get_batch(split)
             with ctx:
                 logits, loss = model(X, Y)
             losses[k] = loss.item()
