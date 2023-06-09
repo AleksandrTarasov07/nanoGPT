@@ -9,7 +9,7 @@ import pandas as pd
 DESCRIPTION_ONLY = True
 
 # 500F16 csv file path
-path_csv_file = '/Users/sanek_tarasov/Yxir/KarpathyNanoGPT/nanoGPT/data/patent500F16/500_F16.xlsx - 41af69fd-59cd-4442-958c-d608809.csv'
+path_csv_file = '/content/gdrive/MyDrive/Colab Notebooks/500_F16.csv'
 
 
 # read csv file and drop 2 first lines

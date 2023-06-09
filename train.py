@@ -26,6 +26,7 @@ import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
+from torcheval.metrics.text import Perplexity
 
 from model import GPTConfig, GPT
 
@@ -208,19 +209,24 @@ if ddp:
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
-def estimate_loss():
-    out = {}
+def estimate_loss_and_metrics():
+    perplexity = Perplexity()
+    out_loss = {}
+    out_perp = {}
     model.eval()
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
+        perps = torch.zeros(eval_iters)
         for k in range(eval_iters):
             X, Y = get_batch(split)
             with ctx:
                 logits, loss = model(X, Y)
             losses[k] = loss.item()
-        out[split] = losses.mean()
+            perps[k] = perplexity.update(X, Y).compute().item()
+        out_loss[split] = losses.mean()
+        out_perp[split] = perps.mean()
     model.train()
-    return out
+    return out_loss, out_perp
 
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
@@ -256,13 +262,17 @@ while True:
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
-        losses = estimate_loss()
-        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+        losses, perps = estimate_loss_and_metrics()
+        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f} \
+              train perplexity {perps['train']:.4f}, val perplexity {perps['val']:.4f}")
+
         if wandb_log:
             wandb.log({
                 "iter": iter_num,
                 "train/loss": losses['train'],
                 "val/loss": losses['val'],
+                "train/perplexity": perps['train'],
+                "val/perplexity": perps['val'],
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
