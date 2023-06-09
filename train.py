@@ -26,7 +26,9 @@ import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
-from torchmetrics.functional import bleu_score
+from torchmetrics import BLEUScore
+from torchmetrics.text.rouge import ROUGEScore
+from torchmetrics.text.bert import BERTScore
 import tiktoken
 
 
@@ -217,33 +219,53 @@ if ddp:
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss_and_metrics():
-
+    bleu_score = BLEUScore(n_gram=3)
+    rouge_score = ROUGEScore()
+    bert_score = BERTScore(max_length=block_size)
     out_loss = {}
     out_perp = {}
     out_bleu = {}
+    out_bert_f1 = {}
+    out_bert_recall = {}
+    out_bert_precision = {}
+    # out_rouge = {}
     model.eval()
     for split in ['train', 'val']:
+
         losses = torch.zeros(eval_iters)
         perps = torch.zeros(eval_iters)
         bleu = torch.zeros(eval_iters)
+        bert_f1 = torch.zeros(eval_iters)
+        bert_precision = torch.zeros(eval_iters)
+        bert_recall = torch.zeros(eval_iters)
+        # rouges = torch.zeros(eval_iters)
+
         for k in range(eval_iters):
             X, Y, Y_seq = get_batch(split)
             with ctx:
                 logits, loss = model(X, Y)
 
             X_seq = logits.argmax(dim=-1)[0].cpu().numpy()
-            print(len(X_seq))
+            # print(len(X_seq))
             X_seq = tokenizer.decode(X_seq)
 
             losses[k] = loss.item()
             perps[k] = torch.exp(loss).item()
-            print(f"X_seq = {X_seq}, \n\n\n Y_seq = {Y_seq}")
-            # bleu[k] = bleu_score(X_seq, Y_seq)
+            # rouges[k] = rouge_score(X_seq, Y_seq)
+            bleu[k] = bleu_score(X_seq, Y_seq)
+            bert_curr = bert_score(X_seq, Y_seq)
+            bert_f1[k] = bert_curr['f1']
+            bert_recall[k] = bert_curr['recall']
+            bert_precision[k] = bert_curr['precision']
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
-        # out_bleu[split] = bleu.mean()
+        out_bleu[split] = bleu.mean()
+        out_bert_f1[split] = bert_f1.mean()
+        out_bert_precision[split] = bert_precision.mean()
+        out_bert_recall[split] = bert_recall.mean()
+
     model.train()
-    return out_loss, out_perp, out_bleu
+    return out_loss, out_perp, out_bleu, out_bert_f1, out_bert_precision, out_bert_recall
 
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
@@ -279,10 +301,9 @@ while True:
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
-        losses, perps, bleus = estimate_loss_and_metrics()
+        losses, perps, bleus, bert_f1, bert_precision, bert_recall = estimate_loss_and_metrics()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f} \
-              \ntrain perplexity {perps['train']:.4f}, val perplexity {perps['val']:.4f}, \
-        train bleu {bleus['train']:.4f}, val bleu {bleus['val']:.4f}")
+              \ntrain perplexity {perps['train']:.4f}, val perplexity {perps['val']:.4f}")
 
         if wandb_log:
             wandb.log({
@@ -293,6 +314,12 @@ while True:
                 "val/perplexity": perps['val'],
                 "train/bleu": bleus['train'],
                 "val/bleu": bleus['val'],
+                "train/bert_f1": bert_f1['train'],
+                "train/bert_precision": bert_precision['train'],
+                "train/bert_recall": bert_recall['train'],
+                "val/bert_f1": bert_f1['val'],
+                "val/bert_precision": bert_precision['val'],
+                "val/bert_recall": bert_recall['val'],
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
