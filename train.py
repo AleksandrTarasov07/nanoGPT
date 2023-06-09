@@ -23,6 +23,7 @@ import pickle
 from contextlib import nullcontext
 
 import numpy as np
+import pandas as pd
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
@@ -317,6 +318,8 @@ t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
+output = []
+target = []
 while True:
 
     # determine and set the learning rate for this iteration
@@ -326,10 +329,11 @@ while True:
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
-        losses, perps, bleus, rouges1, rouges2, rougesL, output, target = estimate_loss_and_metrics()
+        losses, perps, bleus, rouges1, rouges2, rougesL, output_curr, target_curr = estimate_loss_and_metrics()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f} \
               \ntrain perplexity {perps['train']:.4f}, val perplexity {perps['val']:.4f}")
-
+        output += [output_curr]
+        target += [target_curr]
         if wandb_log:
             wandb.log({
                 "iter": iter_num,
@@ -347,11 +351,7 @@ while True:
                 "val/rougeL_fmesure": rougesL['val'],
                 "va"
                 "lr": lr,
-                "mfu": running_mfu*100, # convert to percentage,
-                "train/target":  target['train'],
-                "val/target": target['val'],
-                "train/output" : output['train'],
-                "val/output" : output['val']
+                "mfu": running_mfu*100, # convert to percentage
 
             })
             '''
@@ -423,6 +423,8 @@ while True:
     # termination conditions
     if iter_num > max_iters:
         break
+
+pd.DataFrame([target, output], columns=['target', 'model output']).to_csv('tableau' + init_from + '.csv')
 
 if ddp:
     destroy_process_group()
