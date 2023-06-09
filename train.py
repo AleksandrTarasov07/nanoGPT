@@ -262,27 +262,28 @@ def estimate_loss_and_metrics():
 
             losses[k] = loss.item()
             perps[k] = torch.exp(loss).item()
-            bleu[k] = bleu_score(X_seq, Y_seq)
+            # bleu[k] = bleu_score(X_seq, Y_seq)
 
-            rouge_curr = rouge_score(X_seq, Y_seq)
-            rouge1[k] = rouge_curr['rouge1_fmeasure']
-            rouge2[k] = rouge_curr['rouge2_fmeasure']
-            rougeL[k] = rouge_curr['rougeL_fmeasure']
+            # rouge_curr = rouge_score(X_seq, Y_seq)
+            # rouge1[k] = rouge_curr['rouge1_fmeasure']
+            # rouge2[k] = rouge_curr['rouge2_fmeasure']
+            # rougeL[k] = rouge_curr['rougeL_fmeasure']
             # bert_curr = bert_score(X_seq, Y_seq)
             # bert_f1[k] = bert_curr['f1']
             # bert_recall[k] = bert_curr['recall']
             # bert_precision[k] = bert_curr['precision']
 
-        output[split] = X_seq
-        target[split] = Y_seq
+        if split == 'train':
+            output = X_seq
+            target = Y_seq
 
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
-        out_bleu[split] = bleu.mean()
+        out_bleu[split] = 0
 
-        out_rouge1[split] = rouge1.mean()
-        out_rouge2[split] = rouge2.mean()
-        out_rougeL[split] = rougeL.mean()
+        out_rouge1[split] = 0
+        out_rouge2[split] = 0
+        out_rougeL[split] = 0
 
 
 
@@ -424,7 +425,7 @@ while True:
     if iter_num > max_iters:
         break
 
-pd.DataFrame([target, output], columns=['target', 'model output']).to_csv('tableau' + init_from + '.csv')
+pd.DataFrame([target, output], columns=['target','model output']).to_csv('tableau' + init_from + '.csv')
 
 if ddp:
     destroy_process_group()

@@ -3,7 +3,7 @@ from datetime import datetime
 
 out_dir = 'out-patent500F16'
 eval_interval = 5
-eval_iters = 100
+eval_iters = 20
 wandb_log = True # feel free to turn on
 wandb_project = 'patent500F16_gpt2_small_finetune'
 # wandb_run_name = 'ft-' + str(time.time())
