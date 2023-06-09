@@ -222,6 +222,8 @@ def estimate_loss_and_metrics():
     bleu_score = BLEUScore(n_gram=3)
     rouge_score = ROUGEScore()
     # bert_score = BERTScore(max_length=block_size)
+    target = {}
+    output = {}
     out_loss = {}
     out_perp = {}
     out_bleu = {}
@@ -241,6 +243,7 @@ def estimate_loss_and_metrics():
         rouge1 = torch.zeros(eval_iters)
         rouge2 = torch.zeros(eval_iters)
         rougeL = torch.zeros(eval_iters)
+
 
         # bert_f1 = torch.zeros(eval_iters)
         # bert_precision = torch.zeros(eval_iters)
@@ -269,6 +272,9 @@ def estimate_loss_and_metrics():
             # bert_recall[k] = bert_curr['recall']
             # bert_precision[k] = bert_curr['precision']
 
+        output[split] = X_seq
+        target[split] = Y_seq
+
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
         out_bleu[split] = bleu.mean()
@@ -278,12 +284,13 @@ def estimate_loss_and_metrics():
         out_rougeL[split] = rougeL.mean()
 
 
+
         # out_bert_f1[split] = bert_f1.mean()
         # out_bert_precision[split] = bert_precision.mean()
         # out_bert_recall[split] = bert_recall.mean()
 
     model.train()
-    return out_loss, out_perp, out_bleu, out_rouge1, out_rouge2, out_rougeL
+    return out_loss, out_perp, out_bleu, out_rouge1, out_rouge2, out_rougeL, output, target
 
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
@@ -319,7 +326,7 @@ while True:
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
-        losses, perps, bleus, rouges1, rouges2, rougesL = estimate_loss_and_metrics()
+        losses, perps, bleus, rouges1, rouges2, rougesL, output, target = estimate_loss_and_metrics()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f} \
               \ntrain perplexity {perps['train']:.4f}, val perplexity {perps['val']:.4f}")
 
@@ -340,7 +347,12 @@ while True:
                 "val/rougeL_fmesure": rougesL['val'],
                 "va"
                 "lr": lr,
-                "mfu": running_mfu*100, # convert to percentage
+                "mfu": running_mfu*100, # convert to percentage,
+                "train/target":  target['train'],
+                "val/target": target['val'],
+                "train/output" : output['train'],
+                "val/output" : output['val']
+
             })
             '''
             TODO: 
