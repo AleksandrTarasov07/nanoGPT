@@ -124,14 +124,14 @@ def get_batch(split):
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
-    x_seq = tokenizer.decode(x)
-    y_seq = tokenizer.decode(y)
+    y_seq = tokenizer.decode(y[0].numpy())
+
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
     else:
         x, y = x.to(device), y.to(device)
-    return x, y
+    return x, y, y_seq
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
@@ -227,15 +227,21 @@ def estimate_loss_and_metrics():
         perps = torch.zeros(eval_iters)
         bleu = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            X, Y,X_sen, Y_sen = get_batch(split)
+            X, Y, Y_seq = get_batch(split)
             with ctx:
                 logits, loss = model(X, Y)
+
+            X_seq = logits.argmax(dim=-1)[0].cpu().numpy()
+            print(len(X_seq))
+            X_seq = tokenizer.decode(X_seq)
+
             losses[k] = loss.item()
             perps[k] = torch.exp(loss).item()
-            bleu[k] = bleu_score(X_sen, Y_sen)
+            print(f"X_seq = {X_seq}, \n\n\n Y_seq = {Y_seq}")
+            # bleu[k] = bleu_score(X_seq, Y_seq)
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
-        out_bleu[split] = bleu.mean()
+        # out_bleu[split] = bleu.mean()
     model.train()
     return out_loss, out_perp, out_bleu
 
@@ -259,7 +265,7 @@ if wandb_log and master_process:
     wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
 # training loop
-X, Y = get_batch('train') # fetch the very first batch
+X, Y, Y_seq = get_batch('train') # fetch the very first batch
 t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
