@@ -223,8 +223,6 @@ def estimate_loss_and_metrics():
     bleu_score = BLEUScore(n_gram=3)
     rouge_score = ROUGEScore()
     # bert_score = BERTScore(max_length=block_size)
-    target = {}
-    output = {}
     out_loss = {}
     out_perp = {}
     out_bleu = {}
