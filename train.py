@@ -260,12 +260,12 @@ def estimate_loss_and_metrics():
 
             losses[k] = loss.item()
             perps[k] = torch.exp(loss).item()
-            # bleu[k] = bleu_score(X_seq, Y_seq)
+            bleu[k] = bleu_score(X_seq, Y_seq)
 
-            # rouge_curr = rouge_score(X_seq, Y_seq)
-            # rouge1[k] = rouge_curr['rouge1_fmeasure']
-            # rouge2[k] = rouge_curr['rouge2_fmeasure']
-            # rougeL[k] = rouge_curr['rougeL_fmeasure']
+            rouge_curr = rouge_score(X_seq, Y_seq)
+            rouge1[k] = rouge_curr['rouge1_fmeasure']
+            rouge2[k] = rouge_curr['rouge2_fmeasure']
+            rougeL[k] = rouge_curr['rougeL_fmeasure']
             # bert_curr = bert_score(X_seq, Y_seq)
             # bert_f1[k] = bert_curr['f1']
             # bert_recall[k] = bert_curr['recall']
