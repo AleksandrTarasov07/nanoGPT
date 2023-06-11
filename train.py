@@ -424,8 +424,7 @@ while True:
     # termination conditions
     if iter_num > max_iters:
         break
-
-pd.DataFrame([target, output], columns=['target','model output']).to_csv('tableau' + init_from + '.csv')
+pd.DataFrame(np.array([target, output]).reshape(2, -1), index=['target', 'output']).to_excel(dataset + '_' + init_from + '.xlsx')
 
 if ddp:
     destroy_process_group()
