@@ -285,6 +285,7 @@ def estimate_loss_and_metrics():
 
         if split == 'val':
             X, Y, Y_seq = get_batch(split, displaying=True)
+            logits, _ = model(X, Y)
             X_seq = logits.argmax(dim=-1)[0].cpu().numpy()
             X_seq = tokenizer.decode(X_seq)
             output = X_seq
