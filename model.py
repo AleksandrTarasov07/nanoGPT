@@ -224,15 +224,15 @@ class GPT(nn.Module):
         # e.g. we may load the GPT2 pretrained model checkpoint (block size 1024)
         # however want to use a bigger block_size for some bigger model
 
-        assert block_size >= self.config.block_size
+        assert block_size > self.config.block_size
+        with torch.no_grad():
+            self.transformer.wpe.weight[:self.config.block_size] = nn.Parameter(self.transformer.wpe.weight)
+            nn.init.normal_(self.transformer.wpe.weight[self.config.block_size:], mean=0.0, std=0.02)
 
-        self.transformer.wpe.weight[:self.config.block_size] = nn.Parameter(self.transformer.wpe.weight)
-        nn.init.normal_(self.transformer.wpe.weight[self.config.block_size:], mean=0.0, std=0.02)
-
-        for block in self.transformer.h:
-            if hasattr(block.attn, 'bias'):
-                block.attn.bias[:, :, :self.config.block_size] = block.attn.bias
-                nn.init.normal_(block.attn.bias[:, :, self.config.block_size:], mean=0.0, std=.02)
+            for block in self.transformer.h:
+                if hasattr(block.attn, 'bias'):
+                    block.attn.bias[:, :, :self.config.block_size] = block.attn.bias
+                    nn.init.normal_(block.attn.bias[:, :, self.config.block_size:], mean=0.0, std=.02)
 
         self.config.block_size = block_size
 
