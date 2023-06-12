@@ -219,20 +219,26 @@ class GPT(nn.Module):
             if hasattr(block.attn, 'bias'):
                 block.attn.bias = block.attn.bias[:, :, :block_size, :block_size]
 
-    def augmentation_block_size(self, block_size):
+    def augmentation_block_size(self, block_size, init_normal=False):
         # model surgery to increase the block size if necessary
         # e.g. we may load the GPT2 pretrained model checkpoint (block size 1024)
         # however want to use a bigger block_size for some bigger model
 
         assert block_size > self.config.block_size
         with torch.no_grad():
-            self.transformer.wpe.weight[:self.config.block_size] = nn.Parameter(self.transformer.wpe.weight)
-            nn.init.normal_(self.transformer.wpe.weight[self.config.block_size:], mean=0.0, std=0.02)
+            if init_normal:
+                self.transformer.wpe.weight[:self.config.block_size] = nn.Parameter(self.transformer.wpe.weight)
+                nn.init.normal_(self.transformer.wpe.weight[self.config.block_size:], mean=0.0, std=0.02)
+            else:
+                self.transformer.wpe.weight = nn.Parameter(nn.Embedding(block_size, self.config.n_embd).weight)
 
             for block in self.transformer.h:
                 if hasattr(block.attn, 'bias'):
-                    block.attn.bias[:, :, :self.config.block_size] = block.attn.bias
-                    nn.init.normal_(block.attn.bias[:, :, self.config.block_size:], mean=0.0, std=.02)
+                    if init_normal:
+                        block.attn.bias[:, :, :self.config.block_size] = block.attn.bias
+                        nn.init.normal_(block.attn.bias[:, :, self.config.block_size:], mean=0.0, std=.02)
+                    else:
+                        block.attn.bias = block.attn.bias.repeat(block_size // self.config.block_size)
 
         self.config.block_size = block_size
 
