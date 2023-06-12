@@ -122,11 +122,18 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 data_dir = os.path.join('/content/nanoGPT/data', dataset)
 train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
 val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
-def get_batch(split):
+
+
+def get_batch(split, displaying=False):
+
     data = train_data if split == 'train' else val_data
-    ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    if not displaying:
+        ix = torch.randint(len(data) - block_size, (batch_size,))
+    else:
+        ix = torch.arange(0, block_size)
+
+    x = torch.stack([torch.from_numpy((data[i:i + block_size]).astype(np.int64)) for i in ix])
+    y = torch.stack([torch.from_numpy((data[i + 1:i + 1 + block_size]).astype(np.int64)) for i in ix])
     y_seq = tokenizer.decode(y[0].numpy())
 
     if device_type == 'cuda':
@@ -276,17 +283,20 @@ def estimate_loss_and_metrics():
             # bert_recall[k] = bert_curr['recall']
             # bert_precision[k] = bert_curr['precision']
 
-        if split == 'train':
+        if split == 'val':
+            X, Y, Y_seq = get_batch(split, displaying=True)
+            X_seq = logits.argmax(dim=-1)[0].cpu().numpy()
+            X_seq = tokenizer.decode(X_seq)
             output = X_seq
             target = Y_seq
 
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
-        out_bleu[split] = 0
+        out_bleu[split] = bleu.mean()
 
-        out_rouge1[split] = 0
-        out_rouge2[split] = 0
-        out_rougeL[split] = 0
+        out_rouge1[split] = rouge1.mean()
+        out_rouge2[split] = rouge2.mean()
+        out_rougeL[split] = rougeL.mean()
 
 
 
