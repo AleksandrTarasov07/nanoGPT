@@ -284,12 +284,13 @@ def estimate_loss_and_metrics():
             # bert_precision[k] = bert_curr['precision']
 
         if split == 'val':
-            X, Y, Y_seq = get_batch(split, displaying=True)
-            logits, _ = model(X, Y)
-            X_seq = logits.argmax(dim=-1)[0].cpu().numpy()
-            X_seq = tokenizer.decode(X_seq)
-            output = X_seq
-            target = Y_seq
+            X, Y, Y_seq_display = get_batch(split, displaying=True)
+            with ctx:
+                logits, _ = model(X, Y)
+            X_seq_display = logits.argmax(dim=-1)[0].cpu().numpy()
+            X_seq_display = tokenizer.decode(X_seq_display)
+            output = X_seq_display
+            target = Y_seq_display
 
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
