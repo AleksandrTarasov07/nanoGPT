@@ -315,8 +315,9 @@ def estimate_loss_and_metrics():
                 X_seq = tokenizer.decode(X_seq)
             else:
                 X, Y, Y_seq = get_batch(split)
-                with ctx:
-                    X_seq = model.generate(X, X.shape[1])
+                with torch.no_grad():
+                    with ctx:
+                        X_seq = model.generate(X, X.shape[1])
 
                 X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
                 X_seq = tokenizer.decode(X_seq)
@@ -356,8 +357,9 @@ def estimate_loss_and_metrics():
         X_seq_display = tokenizer.decode(X_seq_display)
 
     else:
-        with ctx:
-            X_seq = model.generate(X, X.shape[1])
+        with torch.no_grad():
+            with ctx:
+                X_seq = model.generate(X, X.shape[1])
         X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
         X_seq = tokenizer.decode(X_seq)
 
