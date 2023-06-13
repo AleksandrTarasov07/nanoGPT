@@ -78,14 +78,17 @@ backend = 'nccl' # 'nccl', 'gloo', etc.
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = True # use PyTorch 2.0 to compile the model to be faster
+
+# flag for conditional learning (fine-tuning)
+conditional_learning = False
+
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('/content/nanoGPT/configurator.py').read()) # overrides from command line or config file
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
 
-# flag for conditional learning (fine-tuning)
-conditional_learning = False
+
 
 # tokenizer
 if not conditional_learning:
@@ -141,6 +144,7 @@ data_dir = os.path.join('/content/nanoGPT/data', dataset)
 if not conditional_learning:
     train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
     val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+
 else:
     train_input = np.memmap(os.path.join(data_dir, 'train_input.bin'), dtype=np.uint64, mode='r')
     train_target = np.memmap(os.path.join(data_dir, 'train_target.bin'), dtype=np.uint64, mode='r')

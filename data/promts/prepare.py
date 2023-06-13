@@ -45,9 +45,9 @@ max_len_target = np.max(target_lens)
 
 
 for i in range(100):
-    for j in range(input_lens[i], np.max(max_len_input, max_len_target)):
+    for j in range(input_lens[i], np.max([max_len_input, max_len_target])):
         input[i] += [50257]
-    for j in range(target_lens[i], np.max(max_len_input, max_len_target)):
+    for j in range(target_lens[i], np.max([max_len_input, max_len_target])):
         target[i] += [50257]
 
 input = np.array(input)
