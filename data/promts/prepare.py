@@ -11,7 +11,7 @@ import pandas as pd
 file_path = '/content/gdrive/MyDrive/Colab Notebooks/all_examples.xlsx - Sheet1.csv'
 
 
-data = pd.read_csv('/content/gdrive/MyDrive/Colab Notebooks/all_examples.xlsx - Sheet1.csv')
+data = pd.read_csv(file_path)
 initial_data = data[data['task_id'] == 10].reset_index()
 
 input = []
@@ -45,9 +45,9 @@ max_len_target = np.max(target_lens)
 
 
 for i in range(100):
-    for j in range(input_lens[i], max_len_input):
+    for j in range(input_lens[i], np.max(max_len_input, max_len_target)):
         input[i] += [50257]
-    for j in range(target_lens[i], max_len_target):
+    for j in range(target_lens[i], np.max(max_len_input, max_len_target)):
         target[i] += [50257]
 
 input = np.array(input)
@@ -70,9 +70,3 @@ train_input_ids.tofile(os.path.join(os.path.dirname(__file__), 'train_input.bin'
 train_target_ids.tofile(os.path.join(os.path.dirname(__file__), 'train_target.bin'))
 val_input_ids.tofile(os.path.join(os.path.dirname(__file__), 'val_input.bin'))
 val_target_ids.tofile(os.path.join(os.path.dirname(__file__), 'val_target.bin'))
-
-
-
-
-
-
