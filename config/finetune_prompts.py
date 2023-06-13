@@ -9,7 +9,7 @@ wandb_project = 'prompts_gpt2_small_finetune'
 # wandb_run_name = 'ft-' + str(time.time())
 wandb_run_name = 'ft-' + datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 
-dataset = 'prompts'
+dataset = 'promts'
 init_from = 'gpt2' # this is the largest GPT-2 model
 
 # only save checkpoints if the validation loss improves
