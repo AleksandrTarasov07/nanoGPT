@@ -84,8 +84,25 @@ exec(open('/content/nanoGPT/configurator.py').read()) # overrides from command l
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
 
+# we add flag for conditional learning (fine-tuning)
+conditional_learning = False
+
 # tokenizer
-tokenizer = tiktoken.get_encoding("gpt2")
+if not conditional_learning:
+    tokenizer = tiktoken.get_encoding("gpt2")
+else:
+    tokenizer_base = tiktoken.get_encoding("gpt2")
+    # we need pad token
+    tokenizer = tiktoken.Encoding(
+        name="gpt2_pad",
+        pat_str=tokenizer_base._pat_str,
+        mergeable_ranks=tokenizer_base._mergeable_ranks,
+        special_tokens={
+            **tokenizer_base._special_tokens,
+            "<|pad|>": 50257
+        }
+    )
+
 
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
@@ -120,22 +137,45 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 # poor man's data loader
 data_dir = os.path.join('/content/nanoGPT/data', dataset)
-train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
-val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+
+if not conditional_learning:
+    train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
+    val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+else:
+    train_input = np.memmap(os.path.join(data_dir, 'train_input.bin'), dtype=np.uint64, mode='r')
+    train_target = np.memmap(os.path.join(data_dir, 'train_target.bin'), dtype=np.uint64, mode='r')
+    val_input = np.memmap(os.path.join(data_dir, 'val_input.bin'), dtype=np.uint64, mode='r')
+    val_target = np.memmap(os.path.join(data_dir, 'train_target.bin'), dtype=np.uint64, mode='r')
 
 
 def get_batch(split, displaying=False):
 
-    data = train_data if split == 'train' else val_data
+    if not conditional_learning:
 
-    if not displaying:
-        ix = torch.randint(len(data) - block_size, (batch_size,))
+        data = train_data if split == 'train' else val_data
+
+        if not displaying:
+            ix = torch.randint(len(data) - block_size, (batch_size,))
+        else:
+            ix = torch.arange(3, 4)
+
+        x = torch.stack([torch.from_numpy((data[i:i + block_size]).astype(np.int64)) for i in ix])
+        y = torch.stack([torch.from_numpy((data[i + 1:i + 1 + block_size]).astype(np.int64)) for i in ix])
+        y_seq = tokenizer.decode(y[0].numpy())
+
     else:
-        ix = torch.arange(3, 4)
 
-    x = torch.stack([torch.from_numpy((data[i:i + block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i + 1:i + 1 + block_size]).astype(np.int64)) for i in ix])
-    y_seq = tokenizer.decode(y[0].numpy())
+        data = train_input if split == "train" else val_input
+        target = train_target if split == 'train' else val_target
+
+        if not displaying:
+            ix = torch.randint(len(data), (batch_size,))
+        else:
+            ix = torch.arange(3, 4)
+
+        x = torch.stack([torch.from_numpy((data[i]).astype(np.int64)) for i in ix])
+        y = torch.stack([torch.from_numpy((target[i]).astype(np.int64)) for i in ix])
+        y_seq = tokenizer.decode(y[0].numpy())
 
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
@@ -143,6 +183,7 @@ def get_batch(split, displaying=False):
     else:
         x, y = x.to(device), y.to(device)
     return x, y, y_seq
+
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
@@ -263,13 +304,21 @@ def estimate_loss_and_metrics():
         # rouges = torch.zeros(eval_iters)
 
         for k in range(eval_iters):
-            X, Y, Y_seq = get_batch(split)
-            with ctx:
-                logits, loss = model(X, Y)
+            if not conditional_learning:
+                X, Y, Y_seq = get_batch(split)
+                with ctx:
+                    logits, loss = model(X, Y)
 
-            X_seq = logits.argmax(dim=-1)[0].cpu().numpy()
-            # print(len(X_seq))
-            X_seq = tokenizer.decode(X_seq)
+                X_seq = logits.argmax(dim=-1)[0].cpu().numpy()
+                # print(len(X_seq))
+                X_seq = tokenizer.decode(X_seq)
+            else:
+                X, Y, Y_seq = get_batch(split)
+                with ctx:
+                    X_seq = model.generate(X, X.shape[1])
+
+                X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
+                X_seq = tokenizer.decode(X_seq)
 
             losses[k] = loss.item()
             perps[k] = torch.exp(loss).item()
@@ -293,21 +342,29 @@ def estimate_loss_and_metrics():
         out_rouge2[split] = rouge2.mean()
         out_rougeL[split] = rougeL.mean()
 
-
-
         # out_bert_f1[split] = bert_f1.mean()
         # out_bert_precision[split] = bert_precision.mean()
         # out_bert_recall[split] = bert_recall.mean()
 
     X, Y, Y_seq_display = get_batch(split, displaying=True)
-    with ctx:
-        logits, _ = model(X, Y)
-    X_seq_display = logits.argmax(dim=-1)[0].cpu().numpy()
-    X_seq_display = tokenizer.decode(X_seq_display)
+
+    if not conditional_learning:
+        with ctx:
+            logits, _ = model(X, Y)
+        X_seq_display = logits.argmax(dim=-1)[0].cpu().numpy()
+        X_seq_display = tokenizer.decode(X_seq_display)
+
+    else:
+        with ctx:
+            X_seq = model.generate(X, X.shape[1])
+        X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
+        X_seq = tokenizer.decode(X_seq)
+
     output = X_seq_display
     target = Y_seq_display
 
     model.train()
+
     return out_loss, out_perp, out_bleu, out_rouge1, out_rouge2, out_rougeL, output, target
 
 # learning rate decay scheduler (cosine with warmup)
