@@ -152,11 +152,11 @@ else:
     val_target = np.memmap(os.path.join(data_dir, 'train_target.bin'), dtype=np.uint64, mode='r')
 
 
-def get_batch(split, displaying=False, cond_learning=False):
+def get_batch(split, displaying=False):
 
-    if not cond_learning:
+
+    if not conditional_learning:
         data = train_data if split == 'train' else val_data
-
         if not displaying:
             ix = torch.randint(len(data) - block_size, (batch_size,))
         else:
@@ -167,8 +167,8 @@ def get_batch(split, displaying=False, cond_learning=False):
         y_seq = tokenizer.decode(y[0].numpy())
 
     else:
-        data = train_input if split == "train" else val_input
-        target = train_target if split == 'train' else val_target
+        data = train_input.reshape(-1, 727) if split == "train" else val_input.reshape(-1, 727)
+        target = train_target.reshape(-1, 727) if split == 'train' else val_target.reshape(-1, 727)
 
         if not displaying:
             ix = torch.randint(len(data), (batch_size,))
@@ -306,7 +306,7 @@ def estimate_loss_and_metrics():
 
         for k in range(eval_iters):
             if not conditional_learning:
-                X, Y, Y_seq = get_batch(split, cond_learning=conditional_learning)
+                X, Y, Y_seq = get_batch(split)
                 with ctx:
                     logits, loss = model(X, Y)
 
@@ -314,7 +314,7 @@ def estimate_loss_and_metrics():
                 # print(len(X_seq))
                 X_seq = tokenizer.decode(X_seq)
             else:
-                X, Y, Y_seq = get_batch(split, cond_learning=conditional_learning)
+                X, Y, Y_seq = get_batch(split)
                 with ctx:
                     X_seq = model.generate(X, X.shape[1])
 
@@ -347,7 +347,7 @@ def estimate_loss_and_metrics():
         # out_bert_precision[split] = bert_precision.mean()
         # out_bert_recall[split] = bert_recall.mean()
 
-    X, Y, Y_seq_display = get_batch(split, displaying=True, cond_learning=conditional_learning)
+    X, Y, Y_seq_display = get_batch(split, displaying=True)
 
     if not conditional_learning:
         with ctx:
