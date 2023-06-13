@@ -127,10 +127,11 @@ val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r
 def get_batch(split, displaying=False):
 
     data = train_data if split == 'train' else val_data
+
     if not displaying:
         ix = torch.randint(len(data) - block_size, (batch_size,))
     else:
-        ix = torch.arange(0, block_size)
+        ix = 1
 
     x = torch.stack([torch.from_numpy((data[i:i + block_size]).astype(np.int64)) for i in ix])
     y = torch.stack([torch.from_numpy((data[i + 1:i + 1 + block_size]).astype(np.int64)) for i in ix])
@@ -283,14 +284,6 @@ def estimate_loss_and_metrics():
             # bert_recall[k] = bert_curr['recall']
             # bert_precision[k] = bert_curr['precision']
 
-        if split == 'val':
-            X, Y, Y_seq_display = get_batch(split, displaying=True)
-            with ctx:
-                logits, _ = model(X, Y)
-            X_seq_display = logits.argmax(dim=-1)[0].cpu().numpy()
-            X_seq_display = tokenizer.decode(X_seq_display)
-            output = X_seq_display
-            target = Y_seq_display
 
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
@@ -305,6 +298,14 @@ def estimate_loss_and_metrics():
         # out_bert_f1[split] = bert_f1.mean()
         # out_bert_precision[split] = bert_precision.mean()
         # out_bert_recall[split] = bert_recall.mean()
+
+    X, Y, Y_seq_display = get_batch(split, displaying=True)
+    with ctx:
+        logits, _ = model(X, Y)
+    X_seq_display = logits.argmax(dim=-1)[0].cpu().numpy()
+    X_seq_display = tokenizer.decode(X_seq_display)
+    output = X_seq_display
+    target = Y_seq_display
 
     model.train()
     return out_loss, out_perp, out_bleu, out_rouge1, out_rouge2, out_rougeL, output, target
