@@ -84,7 +84,7 @@ exec(open('/content/nanoGPT/configurator.py').read()) # overrides from command l
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
 
-# we add flag for conditional learning (fine-tuning)
+# flag for conditional learning (fine-tuning)
 conditional_learning = False
 
 # tokenizer
@@ -148,10 +148,9 @@ else:
     val_target = np.memmap(os.path.join(data_dir, 'train_target.bin'), dtype=np.uint64, mode='r')
 
 
-def get_batch(split, displaying=False):
+def get_batch(split, displaying=False, cond_learning=False):
 
-    if not conditional_learning:
-
+    if not cond_learning:
         data = train_data if split == 'train' else val_data
 
         if not displaying:
@@ -164,7 +163,6 @@ def get_batch(split, displaying=False):
         y_seq = tokenizer.decode(y[0].numpy())
 
     else:
-
         data = train_input if split == "train" else val_input
         target = train_target if split == 'train' else val_target
 
@@ -297,7 +295,6 @@ def estimate_loss_and_metrics():
         rouge2 = torch.zeros(eval_iters)
         rougeL = torch.zeros(eval_iters)
 
-
         # bert_f1 = torch.zeros(eval_iters)
         # bert_precision = torch.zeros(eval_iters)
         # bert_recall = torch.zeros(eval_iters)
@@ -305,7 +302,7 @@ def estimate_loss_and_metrics():
 
         for k in range(eval_iters):
             if not conditional_learning:
-                X, Y, Y_seq = get_batch(split)
+                X, Y, Y_seq = get_batch(split, cond_learning=conditional_learning)
                 with ctx:
                     logits, loss = model(X, Y)
 
@@ -313,7 +310,7 @@ def estimate_loss_and_metrics():
                 # print(len(X_seq))
                 X_seq = tokenizer.decode(X_seq)
             else:
-                X, Y, Y_seq = get_batch(split)
+                X, Y, Y_seq = get_batch(split, cond_learning=conditional_learning)
                 with ctx:
                     X_seq = model.generate(X, X.shape[1])
 
@@ -346,7 +343,7 @@ def estimate_loss_and_metrics():
         # out_bert_precision[split] = bert_precision.mean()
         # out_bert_recall[split] = bert_recall.mean()
 
-    X, Y, Y_seq_display = get_batch(split, displaying=True)
+    X, Y, Y_seq_display = get_batch(split, displaying=True, cond_learning=conditional_learning)
 
     if not conditional_learning:
         with ctx:
