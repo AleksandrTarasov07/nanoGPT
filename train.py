@@ -326,25 +326,25 @@ def estimate_loss_and_metrics():
                 X, Y, Y_seq = get_batch(split)
                 with torch.no_grad():
                     with ctx:
-                        for _ in range(727):
-                            logits, _ = model(X)
+                        # for _ in range(727):
+                            # logits, _ = model(X)
 
-                            logits = logits[:, -1, :] / temperature
+                            # logits = logits[:, -1, :] / temperature
+                            #
+                            # probs = F.softmax(logits, dim=-1)
+                            # # print(probs.argmax(dim=-1), logits.argmax(dim=-1))
+                            # # idx_next = torch.multinomial(probs, num_samples=1)
+                            # idx_next = probs.argmax(dim=-1)
+                            # # print(f'next token {idx_next}')
+                            #
+                            # X[:, :-1] = X[:, 1:].clone()
+                            # X[:, -1] = idx_next
 
-                            probs = F.softmax(logits, dim=-1)
-                            # print(probs.argmax(dim=-1), logits.argmax(dim=-1))
-                            # idx_next = torch.multinomial(probs, num_samples=1)
-                            idx_next = probs.argmax(dim=-1)
-                            # print(f'next token {idx_next}')
-
-                            X[:, :-1] = X[:, 1:].clone()
-                            X[:, -1] = idx_next
-
-                        # X_seq = model.generate(X, X.shape[1])
+                        X_seq = model.generate(X, X.shape[1])
                         # print('ici')
 
-                # X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
-                X_seq = tokenizer.decode(X[0].cpu().numpy())
+                X_seq = X_seq[0].cpu().numpy()
+                X_seq = tokenizer.decode(X_seq)
                 # print(X_seq)
 
             bleu[k] = bleu_score(X_seq, Y_seq)
@@ -379,27 +379,27 @@ def estimate_loss_and_metrics():
         X_seq_display = logits.argmax(dim=-1)[0].cpu().numpy()
         X_seq_display = tokenizer.decode(X_seq_display)
 
-    else:
-        with torch.no_grad():
-            with ctx:
-                for _ in range(727):
-                    logits, _ = model(X)
-
-                    logits = logits[:, -1, :] / temperature
-
-                    probs = F.softmax(logits, dim=-1)
-
-                    idx_next = probs.argmax(dim=-1)
-                    # print(f'next token {idx_next}')
-
-                    X[:, :-1] = X[:, 1:].clone()
-                    X[:, -1] = idx_next
-        X_seq_display = tokenizer.decode(X[0].cpu().numpy())
-        print(f"generated text {X_seq_display}")
-    output = X_seq_display
-    target = Y_seq_display
-
-    model.train()
+    # else:
+    #     with torch.no_grad():
+    #         with ctx:
+    #             for _ in range(727):
+    #                 logits, _ = model(X)
+    #
+    #                 logits = logits[:, -1, :] / temperature
+    #
+    #                 probs = F.softmax(logits, dim=-1)
+    #
+    #                 idx_next = probs.argmax(dim=-1)
+    #                 # print(f'next token {idx_next}')
+    #
+    #                 X[:, :-1] = X[:, 1:].clone()
+    #                 X[:, -1] = idx_next
+    #     X_seq_display = tokenizer.decode(X[0].cpu().numpy())
+    #     print(f"generated text {X_seq_display}")
+    # output = X_seq_display
+    # target = Y_seq_display
+    #
+    # model.train()
 
     return out_loss, out_perp, out_bleu, out_rouge1, out_rouge2, out_rougeL, output, target
 
