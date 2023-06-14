@@ -181,7 +181,7 @@ def get_batch(split, displaying=False):
 
         x = torch.stack([torch.from_numpy((data[i]).astype(np.int64)) for i in ix])
         y = torch.stack([torch.from_numpy((target[i]).astype(np.int64)) for i in ix])
-        y_seq = tokenizer.decode(y[0][:303].numpy())
+        y_seq = tokenizer.decode(y[0].numpy())
 
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
@@ -344,7 +344,7 @@ def estimate_loss_and_metrics():
                         # print('ici')
 
                 # X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
-                X_seq = tokenizer.decode(X[0][:303].cpu().numpy())
+                X_seq = tokenizer.decode(X[0].cpu().numpy())
                 # print(X_seq)
 
             bleu[k] = bleu_score(X_seq, Y_seq)
@@ -394,8 +394,8 @@ def estimate_loss_and_metrics():
 
                     X[:, :-1] = X[:, 1:].clone()
                     X[:, -1] = idx_next
-        X_seq_display = tokenizer.decode(X[0][:303].cpu().numpy())
-
+        X_seq_display = tokenizer.decode(X[0].cpu().numpy())
+        print(f"generated text {X_seq_display}")
     output = X_seq_display
     target = Y_seq_display
 
