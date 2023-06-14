@@ -86,6 +86,9 @@ conditional_learning = False
 # temperature
 temperature = 1.0
 
+#
+top_k = 10
+
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('/content/nanoGPT/configurator.py').read()) # overrides from command line or config file
@@ -326,25 +329,30 @@ def estimate_loss_and_metrics():
                 X, Y, Y_seq = get_batch(split)
                 with torch.no_grad():
                     with ctx:
-                        # for _ in range(727):
-                            # logits, _ = model(X)
+                        for _ in range(727):
+                            logits, _ = model(X)
 
-                            # logits = logits[:, -1, :] / temperature
-                            #
-                            # probs = F.softmax(logits, dim=-1)
-                            # # print(probs.argmax(dim=-1), logits.argmax(dim=-1))
-                            # # idx_next = torch.multinomial(probs, num_samples=1)
+                            logits = logits[:, -1, :] / temperature
+
+
+                            # print(probs.argmax(dim=-1), logits.argmax(dim=-1))
+                            if top_k is not None:
+                                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                                logits[logits < v[:, [-1]]] = -float('Inf')
+
+                            probs = F.softmax(logits, dim=-1)
+                            idx_next = torch.multinomial(probs, num_samples=1)
                             # idx_next = probs.argmax(dim=-1)
-                            # # print(f'next token {idx_next}')
-                            #
-                            # X[:, :-1] = X[:, 1:].clone()
-                            # X[:, -1] = idx_next
+                            print(f'next token {idx_next}')
 
-                        X_seq = model.generate(X, X.shape[1])
+                            X[:, :-1] = X[:, 1:].clone()
+                            X[:, -1] = idx_next
+
+                        # X_seq = model.generate(X, X.shape[1])
                         # print('ici')
 
-                X_seq = X_seq[0].cpu().numpy()
-                X_seq = tokenizer.decode(X_seq)
+                # X_seq = X_seq[0].cpu().numpy()
+                X_seq = tokenizer.decode(X[0])
                 # print(X_seq)
 
             bleu[k] = bleu_score(X_seq, Y_seq)
