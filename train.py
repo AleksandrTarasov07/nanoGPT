@@ -30,6 +30,7 @@ from torch.distributed import init_process_group, destroy_process_group
 from torchmetrics import BLEUScore
 from torchmetrics.text.rouge import ROUGEScore
 from torchmetrics.text.bert import BERTScore
+from torch.nn import functional as F
 import tiktoken
 
 
@@ -75,12 +76,15 @@ min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchi
 # DDP settings
 backend = 'nccl' # 'nccl', 'gloo', etc.
 # system
-device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
+device = 'cuda' if torch.cuda.is_available() else 'cpu' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = True # use PyTorch 2.0 to compile the model to be faster
 
 # flag for conditional learning (fine-tuning)
 conditional_learning = False
+
+# temperature
+temperature = 1.0
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
@@ -308,22 +312,40 @@ def estimate_loss_and_metrics():
             if not conditional_learning:
                 X, Y, Y_seq = get_batch(split)
                 with ctx:
+
                     logits, loss = model(X, Y)
+
+                losses[k] = loss.item()
+                perps[k] = torch.exp(loss).item()
 
                 X_seq = logits.argmax(dim=-1)[0].cpu().numpy()
                 # print(len(X_seq))
                 X_seq = tokenizer.decode(X_seq)
+
             else:
                 X, Y, Y_seq = get_batch(split)
                 with torch.no_grad():
                     with ctx:
-                        X_seq = model.generate(X, X.shape[1])
+                        for _ in range(X.shape[1]):
+                            logits, _ = model(X)
 
-                X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
-                X_seq = tokenizer.decode(X_seq)
+                            logits = logits[:, -1, :] / temperature
 
-            losses[k] = loss.item()
-            perps[k] = torch.exp(loss).item()
+                            probs = F.softmax(logits, dim=-1)
+
+                            idx_next = torch.multinomial(probs, num_samples=1)
+                            print(f'next token {idx_next}')
+
+                            X[:, :-1] = X[:, 1:]
+                            X[:, -1] = idx_next
+
+                        # X_seq = model.generate(X, X.shape[1])
+                        print('ici')
+
+                # X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
+                X_seq = tokenizer.decode(X_seq[0])
+                print(X_seq)
+
             bleu[k] = bleu_score(X_seq, Y_seq)
 
             rouge_curr = rouge_score(X_seq, Y_seq)
@@ -356,15 +378,15 @@ def estimate_loss_and_metrics():
         X_seq_display = logits.argmax(dim=-1)[0].cpu().numpy()
         X_seq_display = tokenizer.decode(X_seq_display)
 
-    else:
-        with torch.no_grad():
-            with ctx:
-                X_seq = model.generate(X, X.shape[1])
-        X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
-        X_seq = tokenizer.decode(X_seq)
-
-    output = X_seq_display
-    target = Y_seq_display
+    # else:
+    #     with torch.no_grad():
+    #         with ctx:
+    #             X_seq = model.generate(X, X.shape[1])
+    #     X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
+    #     X_seq = tokenizer.decode(X_seq)
+    #
+    # output = X_seq_display
+    # target = Y_seq_display
 
     model.train()
 
