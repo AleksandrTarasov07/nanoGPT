@@ -22,18 +22,18 @@ for i in range(len(initial_data)):
 
 
 # encode with tiktoken gpt2 bpe and added <|pad|> like a special token
-tokenizer_base = tiktoken.get_encoding("gpt2")
-tokenizer = tiktoken.Encoding(
-    # If you're changing the set of special tokens, make sure to use a different name
-    # It should be clear from the name what behaviour to expect.
-    name="gpt2_pad",
-    pat_str=tokenizer_base._pat_str,
-    mergeable_ranks=tokenizer_base._mergeable_ranks,
-    special_tokens={
-        **tokenizer_base._special_tokens,
-        "<|pad|>": 50257
-    }
-)
+tokenizer = tiktoken.get_encoding("gpt2")
+# tokenizer = tiktoken.Encoding(
+#     # If you're changing the set of special tokens, make sure to use a different name
+#     # It should be clear from the name what behaviour to expect.
+#     name="gpt2_pad",
+#     pat_str=tokenizer_base._pat_str,
+#     mergeable_ranks=tokenizer_base._mergeable_ranks,
+#     special_tokens={
+#         **tokenizer_base._special_tokens,
+#         "<|pad|>": 50257
+#     }
+# )
 input = [tokenizer.encode(input[i]) for i in range(100)]
 target = [tokenizer.encode(target[i]) for i in range(100)]
 
@@ -46,9 +46,9 @@ max_len_target = np.max(target_lens)
 
 for i in range(100):
     for j in range(input_lens[i], np.max([max_len_input, max_len_target])):
-        input[i] += [50257]
+        input[i] += [50256]
     for j in range(target_lens[i], np.max([max_len_input, max_len_target])):
-        target[i] += [50257]
+        target[i] += [50256]
 
 input = np.array(input)
 target = np.array(target)

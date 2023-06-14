@@ -98,20 +98,20 @@ config = {k: globals()[k] for k in config_keys} # will be useful for logging
 
 
 # tokenizer
-if not conditional_learning:
-    tokenizer = tiktoken.get_encoding("gpt2")
-else:
-    tokenizer_base = tiktoken.get_encoding("gpt2")
-    # we need pad token
-    tokenizer = tiktoken.Encoding(
-        name="gpt2_pad",
-        pat_str=tokenizer_base._pat_str,
-        mergeable_ranks=tokenizer_base._mergeable_ranks,
-        special_tokens={
-            **tokenizer_base._special_tokens,
-            "<|pad|>": 50257
-        }
-    )
+# if not conditional_learning:
+tokenizer = tiktoken.get_encoding("gpt2")
+# else:
+#     tokenizer_base = tiktoken.get_encoding("gpt2")
+#     # we need pad token
+#     tokenizer = tiktoken.Encoding(
+#         name="gpt2_pad",
+#         pat_str=tokenizer_base._pat_str,
+#         mergeable_ranks=tokenizer_base._mergeable_ranks,
+#         special_tokens={
+#             **tokenizer_base._special_tokens,
+#             "<|pad|>": 50257
+#         }
+#     )
 
 
 # various inits, derived attributes, I/O setup
@@ -209,7 +209,7 @@ if os.path.exists(meta_path):
 
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=None, dropout=dropout) # start with model_args from command line
+                  bias=bias, vocab_size=50257, dropout=dropout) # start with model_args from command line
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -329,30 +329,30 @@ def estimate_loss_and_metrics():
                 X, Y, Y_seq = get_batch(split)
                 with torch.no_grad():
                     with ctx:
-                        for _ in range(727):
-                            logits, _ = model(X)
+                        # for _ in range(727):
+                        #     logits, _ = model(X)
+                        #
+                        #     logits = logits[:, -1, :] / temperature
+                        #
+                        #
+                        #     # print(probs.argmax(dim=-1), logits.argmax(dim=-1))
+                        #     if top_k is not None:
+                        #         v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                        #         logits[logits < v[:, [-1]]] = -float('Inf')
+                        #
+                        #     # probs = F.softmax(logits, dim=-1)
+                        #     idx_next = torch.multinomial(logits, num_samples=1)
+                        #     # idx_next = probs.argmax(dim=-1)
+                        #     print(f'next token {idx_next}')
+                        #
+                        #     X[:, :-1] = X[:, 1:].clone()
+                        #     X[:, -1] = idx_next
 
-                            logits = logits[:, -1, :] / temperature
-
-
-                            # print(probs.argmax(dim=-1), logits.argmax(dim=-1))
-                            if top_k is not None:
-                                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                                logits[logits < v[:, [-1]]] = -float('Inf')
-
-                            probs = F.softmax(logits, dim=-1)
-                            idx_next = torch.multinomial(probs, num_samples=1)
-                            # idx_next = probs.argmax(dim=-1)
-                            print(f'next token {idx_next}')
-
-                            X[:, :-1] = X[:, 1:].clone()
-                            X[:, -1] = idx_next
-
-                        # X_seq = model.generate(X, X.shape[1])
+                        X_seq = model.generate(X, X.shape[1])
                         # print('ici')
 
-                # X_seq = X_seq[0].cpu().numpy()
-                X_seq = tokenizer.decode(X[0])
+                X_seq = X_seq[0].cpu().numpy()
+                X_seq = tokenizer.decode(X_seq)
                 # print(X_seq)
 
             bleu[k] = bleu_score(X_seq, Y_seq)
