@@ -326,7 +326,7 @@ def estimate_loss_and_metrics():
                 X, Y, Y_seq = get_batch(split)
                 with torch.no_grad():
                     with ctx:
-                        for _ in range(X.shape[1]):
+                        for _ in range(300):
                             logits, _ = model(X)
 
                             logits = logits[:, -1, :] / temperature
@@ -379,15 +379,25 @@ def estimate_loss_and_metrics():
         X_seq_display = logits.argmax(dim=-1)[0].cpu().numpy()
         X_seq_display = tokenizer.decode(X_seq_display)
 
-    # else:
-    #     with torch.no_grad():
-    #         with ctx:
-    #             X_seq = model.generate(X, X.shape[1])
-    #     X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
-    #     X_seq = tokenizer.decode(X_seq)
-    #
-    # output = X_seq_display
-    # target = Y_seq_display
+    else:
+        with torch.no_grad():
+            with ctx:
+                for _ in range(300):
+                    logits, _ = model(X)
+
+                    logits = logits[:, -1, :] / temperature
+
+                    probs = F.softmax(logits, dim=-1)
+
+                    idx_next = logits.argmax(dim=-1)
+                    # print(f'next token {idx_next}')
+
+                    X[:, :-1] = X[:, 1:].clone()
+                    X[:, -1] = idx_next
+        X_seq_display = tokenizer.decode(X[0].cpu().numpy())
+
+    output = X_seq_display
+    target = Y_seq_display
 
     model.train()
 
