@@ -181,7 +181,7 @@ def get_batch(split, displaying=False):
 
         x = torch.stack([torch.from_numpy((data[i]).astype(np.int64)) for i in ix])
         y = torch.stack([torch.from_numpy((target[i]).astype(np.int64)) for i in ix])
-        y_seq = tokenizer.decode(y[0].numpy())
+        y_seq = tokenizer.decode(y[0][:303].numpy())
 
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
@@ -326,7 +326,7 @@ def estimate_loss_and_metrics():
                 X, Y, Y_seq = get_batch(split)
                 with torch.no_grad():
                     with ctx:
-                        for _ in range(300):
+                        for _ in range(727):
                             logits, _ = model(X)
 
                             logits = logits[:, -1, :] / temperature
@@ -334,7 +334,7 @@ def estimate_loss_and_metrics():
                             probs = F.softmax(logits, dim=-1)
                             # print(probs.argmax(dim=-1), logits.argmax(dim=-1))
                             # idx_next = torch.multinomial(probs, num_samples=1)
-                            idx_next = logits.argmax(dim=-1)
+                            idx_next = probs.argmax(dim=-1)
                             # print(f'next token {idx_next}')
 
                             X[:, :-1] = X[:, 1:].clone()
@@ -344,7 +344,7 @@ def estimate_loss_and_metrics():
                         # print('ici')
 
                 # X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
-                X_seq = tokenizer.decode(X[0].cpu().numpy())
+                X_seq = tokenizer.decode(X[0][:303].cpu().numpy())
                 # print(X_seq)
 
             bleu[k] = bleu_score(X_seq, Y_seq)
@@ -382,19 +382,19 @@ def estimate_loss_and_metrics():
     else:
         with torch.no_grad():
             with ctx:
-                for _ in range(300):
+                for _ in range(727):
                     logits, _ = model(X)
 
                     logits = logits[:, -1, :] / temperature
 
                     probs = F.softmax(logits, dim=-1)
 
-                    idx_next = logits.argmax(dim=-1)
+                    idx_next = probs.argmax(dim=-1)
                     # print(f'next token {idx_next}')
 
                     X[:, :-1] = X[:, 1:].clone()
                     X[:, -1] = idx_next
-        X_seq_display = tokenizer.decode(X[0].cpu().numpy())
+        X_seq_display = tokenizer.decode(X[0][:303].cpu().numpy())
 
     output = X_seq_display
     target = Y_seq_display
@@ -440,8 +440,12 @@ while True:
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
         losses, perps, bleus, rouges1, rouges2, rougesL, output_curr, target_curr = estimate_loss_and_metrics()
-        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f} \
+        if not conditional_learning:
+            print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f} \
               \ntrain perplexity {perps['train']:.4f}, val perplexity {perps['val']:.4f}")
+        else:
+            print(f"step {iter_num}: \ntrain bleu {bleus['train']:.4f}, val bleu {bleus['val']:.4f}, \
+            train rouge1 f_mesure {rouges1['train']}")
         output += [output_curr]
         target += [target_curr]
         if wandb_log:
