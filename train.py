@@ -332,19 +332,20 @@ def estimate_loss_and_metrics():
                             logits = logits[:, -1, :] / temperature
 
                             probs = F.softmax(logits, dim=-1)
+                            # print(probs.argmax(dim=-1), logits.argmax(dim=-1))
+                            # idx_next = torch.multinomial(probs, num_samples=1)
+                            idx_next = logits.argmax(dim=-1)
+                            # print(f'next token {idx_next}')
 
-                            idx_next = torch.multinomial(probs, num_samples=1)
-                            print(f'next token {idx_next}')
-
-                            X[:, :-1] = X[:, 1:]
+                            X[:, :-1] = X[:, 1:].clone()
                             X[:, -1] = idx_next
 
                         # X_seq = model.generate(X, X.shape[1])
-                        print('ici')
+                        # print('ici')
 
                 # X_seq = X_seq[:, X.shape[1]:][0].cpu().numpy
-                X_seq = tokenizer.decode(X_seq[0])
-                print(X_seq)
+                X_seq = tokenizer.decode(X[0].cpu().numpy())
+                # print(X_seq)
 
             bleu[k] = bleu_score(X_seq, Y_seq)
 
