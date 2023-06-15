@@ -1,72 +1,65 @@
 import os
-import requests
 import tiktoken
 import numpy as np
 import pandas as pd
-
-
-
+import json
 
 # all examples file path
-file_path = '/content/gdrive/MyDrive/Colab Notebooks/all_examples.xlsx - Sheet1.csv'
+file_path = 'all_examples.csv'
 
-
+# download data
 data = pd.read_csv(file_path)
+
+# take just 10 prompt
 initial_data = data[data['task_id'] == 10].reset_index()
 
+# init tokenizer
+tokenizer = tiktoken.get_encoding("gpt2")
+
+# group data
 input = []
 target = []
 for i in range(len(initial_data)):
     input += [initial_data['prompt'][i] + '\n' + initial_data['input'][i]]
     target += [initial_data['output'][i]]
 
+input = [tokenizer.encode(input[i]) for i in range(len(input))]
+target = [tokenizer.encode(target[i]) for i in range(len(input))]
 
-# encode with tiktoken gpt2 bpe and added <|pad|> like a special token
-tokenizer = tiktoken.get_encoding("gpt2")
-# tokenizer = tiktoken.Encoding(
-#     # If you're changing the set of special tokens, make sure to use a different name
-#     # It should be clear from the name what behaviour to expect.
-#     name="gpt2_pad",
-#     pat_str=tokenizer_base._pat_str,
-#     mergeable_ranks=tokenizer_base._mergeable_ranks,
-#     special_tokens={
-#         **tokenizer_base._special_tokens,
-#         "<|pad|>": 50257
-#     }
-# )
-input = [tokenizer.encode(input[i]) for i in range(100)]
-target = [tokenizer.encode(target[i]) for i in range(100)]
+for i in range(len(input)):
+    input[i] += [50256]
+    target[i] += [50256]
 
-input_lens = [len(input[i]) for i in range(100)]
-target_lens = [len(target[i]) for i in range(100)]
+input_lens = [len(input[i]) for i in range(len(input))]
+target_lens = [len(target[i]) for i in range(len(input))]
 
-max_len_input = np.max(input_lens)
-max_len_target = np.max(target_lens)
+# sort data by the size of target
+df = pd.DataFrame(np.array(target_lens), columns=['1'])
 
+sorted_indexes = np.array(df.index)
 
-for i in range(100):
-    for j in range(input_lens[i], np.max([max_len_input, max_len_target])):
-        input[i] += [50256]
-    for j in range(target_lens[i], np.max([max_len_input, max_len_target])):
-        target[i] += [50256]
-
-input = np.array(input)
-target = np.array(target)
-
-train_input_ids = input[:int(len(input) * 0.9)]
-train_target_ids = target[:int(len(target) * 0.9)]
-
-val_input_ids = input[int(len(input) * 0.9):]
-val_target_ids = target[int(len(target) * 0.9):]
+# create dict with all data in order min --> max
+train_data = {}
+val_data = {}
+for i in range(len(sorted_indexes)):
+    if i < int(0.1 * len(input)):
+        val_data.update({str(i): {'input': input[sorted_indexes[i]],
+                               'target': target[sorted_indexes[i]]}})
+    else:
+        train_data.update({i: {'input': input[sorted_indexes[i]],
+                     'target': target[sorted_indexes[i]]}})
 
 
-print(f"train input has {len(train_input_ids) * train_input_ids.shape[1]:,} tokens")
-print(f"train target has {len(train_target_ids) * train_target_ids.shape[1]:,} tokens")
-print(f"val input has {len(val_input_ids) * val_input_ids.shape[1]:,} tokens")
-print(f"val target has {len(val_target_ids) * val_target_ids.shape[1]:,} tokens")
 
-# export to bin files
-train_input_ids.tofile(os.path.join(os.path.dirname(__file__), 'train_input.bin'))
-train_target_ids.tofile(os.path.join(os.path.dirname(__file__), 'train_target.bin'))
-val_input_ids.tofile(os.path.join(os.path.dirname(__file__), 'val_input.bin'))
-val_target_ids.tofile(os.path.join(os.path.dirname(__file__), 'val_target.bin'))
+
+print(f"input has {np.sum(input_lens):,} tokens")
+print(f"targer has {np.sum(target_lens):,} tokens")
+
+
+# export data to json files
+
+with open("train_data.json", "w") as f:
+    json.dump(train_data, f)
+
+with open("val_data.json", "w") as f:
+    json.dump(val_data, f)

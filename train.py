@@ -15,7 +15,7 @@ $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 --master_addr=123.456.123
 $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123.456 --master_port=1234 train.py
 (If your cluster does not have Infiniband interconnect prepend NCCL_IB_DISABLE=1)
 """
-
+import json
 import os
 import time
 import math
@@ -32,7 +32,7 @@ from torchmetrics.text.rouge import ROUGEScore
 from torchmetrics.text.bert import BERTScore
 from torch.nn import functional as F
 import tiktoken
-
+from datetime import datetime
 
 from model import GPTConfig, GPT
 
@@ -40,20 +40,20 @@ from model import GPTConfig, GPT
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 2000
+eval_interval = 5
 log_interval = 1
-eval_iters = 200
+eval_iters = 5
 eval_only = False # if True, script exits right after the first eval
-always_save_checkpoint = True # if True, always save a checkpoint after each eval
-init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
+always_save_checkpoint = False # if True, always save a checkpoint after each eval
+init_from = 'gpt2' # 'scratch' or 'resume' or 'gpt2*'
 # wandb logging
 wandb_log = False # disabled by default
-wandb_project = 'owt'
-wandb_run_name = 'gpt2' # 'run' + str(time.time())
+wandb_project = 'prompts_gpt2_small_finetune'
+wandb_run_name = 'ft-' + datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 # data
-dataset = 'shakespeare'
+dataset = 'promts'
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
-batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
+batch_size = 1 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
 # model
 n_layer = 12
@@ -62,14 +62,14 @@ n_embd = 768
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
 # adamw optimizer
-learning_rate = 6e-4 # max learning rate
-max_iters = 600000 # total number of training iterations
+learning_rate = 3e-5 # max learning rate
+max_iters = 20 # total number of training iterations
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.95
 grad_clip = 1.0 # clip gradients at this value, or disable if == 0.0
 # learning rate decay settings
-decay_lr = True # whether to decay the learning rate
+decay_lr = False # whether to decay the learning rate
 warmup_iters = 2000 # how many steps to warm up for
 lr_decay_iters = 600000 # should be ~= max_iters per Chinchilla
 min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
@@ -77,11 +77,12 @@ min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchi
 backend = 'nccl' # 'nccl', 'gloo', etc.
 # system
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
+# device = 'cpu'
 dtype = 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = True # use PyTorch 2.0 to compile the model to be faster
 
 # flag for conditional learning (fine-tuning)
-conditional_learning = False
+conditional_learning = True
 
 # temperature
 temperature = 1.0
@@ -91,27 +92,15 @@ top_k = 10
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
-exec(open('/content/nanoGPT/configurator.py').read()) # overrides from command line or config file
+exec(open('configurator.py').read()) # overrides from command line or config file
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
-# -----------------------------------------------------------------------------
+# # -----------------------------------------------------------------------------
 
 
 
 # tokenizer
-# if not conditional_learning:
+
 tokenizer = tiktoken.get_encoding("gpt2")
-# else:
-#     tokenizer_base = tiktoken.get_encoding("gpt2")
-#     # we need pad token
-#     tokenizer = tiktoken.Encoding(
-#         name="gpt2_pad",
-#         pat_str=tokenizer_base._pat_str,
-#         mergeable_ranks=tokenizer_base._mergeable_ranks,
-#         special_tokens={
-#             **tokenizer_base._special_tokens,
-#             "<|pad|>": 50257
-#         }
-#     )
 
 
 # various inits, derived attributes, I/O setup
@@ -153,14 +142,24 @@ if not conditional_learning:
     val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
 
 else:
-    train_input = np.memmap(os.path.join(data_dir, 'train_input.bin'), dtype=np.uint64, mode='r')
-    train_target = np.memmap(os.path.join(data_dir, 'train_target.bin'), dtype=np.uint64, mode='r')
-    val_input = np.memmap(os.path.join(data_dir, 'val_input.bin'), dtype=np.uint64, mode='r')
-    val_target = np.memmap(os.path.join(data_dir, 'train_target.bin'), dtype=np.uint64, mode='r')
+    # train_input = np.memmap(os.path.join(data_dir, 'train_input.bin'), dtype=np.uint64, mode='r')
+    # train_target = np.memmap(os.path.join(data_dir, 'train_target.bin'), dtype=np.uint64, mode='r')
+    # val_input = np.memmap(os.path.join(data_dir, 'val_input.bin'), dtype=np.uint64, mode='r')
+    # val_target = np.memmap(os.path.join(data_dir, 'train_target.bin'), dtype=np.uint64, mode='r')
 
+    with open('data/promts/train_data.json') as f:
+        train_data = json.load(f)
+
+    with open('data/promts/val_data.json') as f:
+        val_data = json.load(f)
+
+# for k, v in train_data.items():
+#     print(f"train type key {type(k)}, key  {k}")
+#
+# for k, v in val_data.items():
+#     print(f"val type key {type(k)}, key  {k}")
 
 def get_batch(split, displaying=False):
-
 
     if not conditional_learning:
         data = train_data if split == 'train' else val_data
@@ -174,16 +173,28 @@ def get_batch(split, displaying=False):
         y_seq = tokenizer.decode(y[0].numpy())
 
     else:
-        data = train_input.reshape(-1, 727) if split == "train" else val_input.reshape(-1, 727)
-        target = train_target.reshape(-1, 727) if split == 'train' else val_target.reshape(-1, 727)
+        data = train_data if split == "train" else val_data
 
         if not displaying:
-            ix = torch.randint(len(data), (batch_size,))
+            ix = torch.randint(len(data) - batch_size - 1, (1,))
         else:
             ix = torch.arange(3, 4)
+        # print(split)
+        target_len = np.max([len(data[str(i)]['target']) for i in range(ix, ix + batch_size)])
+        input_len = np.max([len(data[str(i)]['input']) for i in range(ix, ix + batch_size)])
 
-        x = torch.stack([torch.from_numpy((data[i]).astype(np.int64)) for i in ix])
-        y = torch.stack([torch.from_numpy((target[i]).astype(np.int64)) for i in ix])
+        for i in range(ix, ix + batch_size):
+
+            if len(data[str(i)]['target']) < target_len:
+                for j in range(len(data[i]['target']), target_len):
+                    data[str(i)]['target'] += [50256]
+
+            if len(data[str(i)]['input']) < input_len:
+                for j in range(len(data[i]['input']), input_len):
+                    data[str(i)]['input'] += [50256]
+
+        x = torch.Tensor(np.array([data[str(i)]['input'] for i in range(ix, ix + batch_size)])).int()
+        y = torch.Tensor(np.array([data[str(i)]['target'] for i in range(ix, ix + batch_size)])).int()
         y_seq = tokenizer.decode(y[0].numpy())
 
     if device_type == 'cuda':
@@ -209,7 +220,7 @@ if os.path.exists(meta_path):
 
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=50257, dropout=dropout) # start with model_args from command line
+                  bias=bias, vocab_size=None, dropout=dropout) # start with model_args from command line
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -283,19 +294,17 @@ if ddp:
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss_and_metrics():
+
     bleu_score = BLEUScore(n_gram=3)
     rouge_score = ROUGEScore()
-    # bert_score = BERTScore(max_length=block_size)
     out_loss = {}
     out_perp = {}
     out_bleu = {}
     out_rouge1 = {}
     out_rouge2 = {}
     out_rougeL = {}
-    # out_bert_f1 = {}
-    # out_bert_recall = {}
-    # out_bert_precision = {}
-    # out_rouge = {}
+
+
     model.eval()
     for split in ['train', 'val']:
 
@@ -306,10 +315,6 @@ def estimate_loss_and_metrics():
         rouge2 = torch.zeros(eval_iters)
         rougeL = torch.zeros(eval_iters)
 
-        # bert_f1 = torch.zeros(eval_iters)
-        # bert_precision = torch.zeros(eval_iters)
-        # bert_recall = torch.zeros(eval_iters)
-        # rouges = torch.zeros(eval_iters)
 
         for k in range(eval_iters):
             if not conditional_learning:
@@ -329,31 +334,10 @@ def estimate_loss_and_metrics():
                 X, Y, Y_seq = get_batch(split)
                 with torch.no_grad():
                     with ctx:
-                        # for _ in range(727):
-                        #     logits, _ = model(X)
-                        #
-                        #     logits = logits[:, -1, :] / temperature
-                        #
-                        #
-                        #     # print(probs.argmax(dim=-1), logits.argmax(dim=-1))
-                        #     if top_k is not None:
-                        #         v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                        #         logits[logits < v[:, [-1]]] = -float('Inf')
-                        #
-                        #     # probs = F.softmax(logits, dim=-1)
-                        #     idx_next = torch.multinomial(logits, num_samples=1)
-                        #     # idx_next = probs.argmax(dim=-1)
-                        #     print(f'next token {idx_next}')
-                        #
-                        #     X[:, :-1] = X[:, 1:].clone()
-                        #     X[:, -1] = idx_next
-
                         X_seq = model.generate(X, X.shape[1])
-                        # print('ici')
 
                 X_seq = X_seq[0].cpu().numpy()
                 X_seq = tokenizer.decode(X_seq)
-                # print(X_seq)
 
             bleu[k] = bleu_score(X_seq, Y_seq)
 
@@ -361,11 +345,6 @@ def estimate_loss_and_metrics():
             rouge1[k] = rouge_curr['rouge1_fmeasure']
             rouge2[k] = rouge_curr['rouge2_fmeasure']
             rougeL[k] = rouge_curr['rougeL_fmeasure']
-            # bert_curr = bert_score(X_seq, Y_seq)
-            # bert_f1[k] = bert_curr['f1']
-            # bert_recall[k] = bert_curr['recall']
-            # bert_precision[k] = bert_curr['precision']
-
 
         out_loss[split] = losses.mean()
         out_perp[split] = perps.mean()
@@ -375,39 +354,24 @@ def estimate_loss_and_metrics():
         out_rouge2[split] = rouge2.mean()
         out_rougeL[split] = rougeL.mean()
 
-        # out_bert_f1[split] = bert_f1.mean()
-        # out_bert_precision[split] = bert_precision.mean()
-        # out_bert_recall[split] = bert_recall.mean()
-
-    X, Y, Y_seq_display = get_batch(split, displaying=True)
+    X1, Y1, Y_seq_display = get_batch(split, displaying=True)
 
     if not conditional_learning:
         with ctx:
-            logits, _ = model(X, Y)
+            logits, _ = model(X1, Y1)
         X_seq_display = logits.argmax(dim=-1)[0].cpu().numpy()
         X_seq_display = tokenizer.decode(X_seq_display)
 
-    # else:
-    #     with torch.no_grad():
-    #         with ctx:
-    #             for _ in range(727):
-    #                 logits, _ = model(X)
-    #
-    #                 logits = logits[:, -1, :] / temperature
-    #
-    #                 probs = F.softmax(logits, dim=-1)
-    #
-    #                 idx_next = probs.argmax(dim=-1)
-    #                 # print(f'next token {idx_next}')
-    #
-    #                 X[:, :-1] = X[:, 1:].clone()
-    #                 X[:, -1] = idx_next
-    #     X_seq_display = tokenizer.decode(X[0].cpu().numpy())
-    #     print(f"generated text {X_seq_display}")
-    # output = X_seq_display
-    # target = Y_seq_display
-    #
-    # model.train()
+    else:
+        with torch.no_grad():
+            with ctx:
+                X_seq1 = model.generate(X1, X1.shape[1])
+
+            X_seq1 = X_seq1[0].cpu().numpy()
+            X_seq_display = tokenizer.decode(X_seq1)
+    output = X_seq_display
+    target = Y_seq_display
+    model.train()
 
     return out_loss, out_perp, out_bleu, out_rouge1, out_rouge2, out_rougeL, output, target
 
@@ -431,7 +395,11 @@ if wandb_log and master_process:
     wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
 # training loop
+# print(model.lm_head)
+print("*********************GL HF !!!*********************")
 X, Y, Y_seq = get_batch('train') # fetch the very first batch
+logits, _ = model(X)
+# print(f'logits {logits}\nloss {_}')
 t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
@@ -446,7 +414,7 @@ while True:
         param_group['lr'] = lr
 
     # evaluate the loss on train/val sets and write checkpoints
-    if iter_num % eval_interval == 0 and master_process:
+    if iter_num != 0 and iter_num % eval_interval == 0 and master_process:
         losses, perps, bleus, rouges1, rouges2, rougesL, output_curr, target_curr = estimate_loss_and_metrics()
         if not conditional_learning:
             print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f} \
@@ -510,11 +478,22 @@ while True:
             # I really dislike that this bloats the code and forces us to repeat code
             # looking at the source of that context manager, it just toggles this variable
             model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
-        with ctx:
-            logits, loss = model(X, Y)
-            loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
+        if not conditional_learning:
+            with ctx:
+                logits, loss = model(X, Y)
+                loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
+
+        else:
+            with ctx:
+                X_gen, logits = model.generate(X, X.shape[1], loss=True)
+                length = Y.shape[1]
+                # print(f"x gen shape  {X_gen[:, -length:].shape}, y shape {Y.shape}, \n{X_gen}\n{Y}")
+
+                loss = torch.nn.functional.cross_entropy(logits, Y.int()) / gradient_accumulation_steps
+
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y, Y_seq = get_batch('train')
+        print(f"input: {tokenizer.decode(X[0].cpu().numpy())},\ntarget: {Y_seq}")
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
     # clip the gradient
